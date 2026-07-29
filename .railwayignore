@@ -1,0 +1,4 @@
+.env*
+openreply-setup/
+node_modules/
+.next/
