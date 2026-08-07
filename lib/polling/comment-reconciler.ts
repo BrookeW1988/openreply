@@ -74,6 +74,7 @@ export async function reconcileComments(): Promise<void> {
       wholeWordMatch: true,
       publicReplyEnabled: true,
       workspaceId: true,
+      createdAt: true,
       instagramAccount: {
         select: {
           id: true,
@@ -89,7 +90,14 @@ export async function reconcileComments(): Promise<void> {
   const tokenCache = new Map<string, string | null>();
 
   for (const automation of automations) {
-    const stat = await sweepCampaign(automation, sinceMs, tokenCache).catch(
+    // A campaign never acts on comments older than itself. Without this floor,
+    // activating a campaign on a post with existing comments would sweep up to
+    // LOOKBACK_HOURS of history and DM people retroactively.
+    const effectiveSinceMs = Math.max(
+      sinceMs,
+      automation.createdAt.getTime()
+    );
+    const stat = await sweepCampaign(automation, effectiveSinceMs, tokenCache).catch(
       (error): SweepStat => ({
         campaign: automation.name,
         keywords: automation.keywords.join(","),
