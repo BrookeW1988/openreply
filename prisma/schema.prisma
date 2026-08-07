@@ -161,6 +161,11 @@ model Automation {
   openingDmEnabled     Boolean @default(false)
   openingDmMessage     String?
   openingDmButtonLabel String?
+  // Follow gate: on button tap, only deliver the reveal to followers; others
+  // get the nudge message with the same button, looping until they follow.
+  // Requires the opening DM (the tap is what permits the follow-status check).
+  followGateEnabled Boolean @default(false)
+  followGateMessage String?
   linkButtonLabel      String?
   publicReplyEnabled Boolean @default(false)
   publicReplyMessage String?
@@ -333,6 +338,7 @@ enum DmStatus {
   SKIPPED_RATE_LIMIT
   SKIPPED_PLAN_LIMIT
   SKIPPED_NO_MATCH
+  FOLLOW_NUDGE
 }
 
 enum WebhookStatus {

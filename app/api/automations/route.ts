@@ -30,6 +30,8 @@ const createAutomationSchema = z
     openingDmEnabled: z.boolean().optional().default(false),
     openingDmMessage: z.string().max(1000).optional().nullable(),
     openingDmButtonLabel: z.string().max(64).optional().nullable(),
+    followGateEnabled: z.boolean().optional().default(false),
+    followGateMessage: z.string().max(640).optional().nullable(),
     linkButtonLabel: z.string().max(20).optional().nullable(),
     publicReplyEnabled: z.boolean().optional().default(false),
     publicReplyMessage: z.string().max(1000).optional().nullable(),
@@ -63,7 +65,13 @@ const createAutomationSchema = z
       (Boolean(d.openingDmMessage?.trim()) &&
         Boolean(d.openingDmButtonLabel?.trim())),
     { message: "Opening DM needs a message and a button label", path: ["openingDmMessage"] }
-  );
+  )
+  // The follow gate rides on the opening DM's button tap, so it can't exist
+  // without one.
+  .refine((d) => !d.followGateEnabled || d.openingDmEnabled, {
+    message: "The follow gate needs the opening DM enabled",
+    path: ["followGateEnabled"],
+  });
 
 const updateAutomationSchema = z.object({
   name: z.string().min(1).max(100).optional(),
@@ -78,6 +86,8 @@ const updateAutomationSchema = z.object({
   openingDmEnabled: z.boolean().optional(),
   openingDmMessage: z.string().max(1000).optional().nullable(),
   openingDmButtonLabel: z.string().max(64).optional().nullable(),
+  followGateEnabled: z.boolean().optional(),
+  followGateMessage: z.string().max(640).optional().nullable(),
   linkButtonLabel: z.string().max(20).optional().nullable(),
   publicReplyEnabled: z.boolean().optional(),
   publicReplyMessage: z.string().max(1000).optional().nullable(),
@@ -348,6 +358,11 @@ export async function POST(request: NextRequest) {
       openingDmButtonLabel: openingDmEnabled
         ? parsed.data.openingDmButtonLabel || null
         : null,
+      followGateEnabled: openingDmEnabled && parsed.data.followGateEnabled,
+      followGateMessage:
+        openingDmEnabled && parsed.data.followGateEnabled
+          ? parsed.data.followGateMessage || null
+          : null,
       linkButtonLabel: parsed.data.linkButtonLabel || null,
       publicReplyEnabled: parsed.data.publicReplyEnabled,
       publicReplyMessages: parsed.data.publicReplyEnabled
@@ -444,6 +459,12 @@ export async function PATCH(request: NextRequest) {
   if (automationData.openingDmEnabled === false) {
     automationData.openingDmMessage = null;
     automationData.openingDmButtonLabel = null;
+    // The gate can't function without the opening DM's button tap.
+    automationData.followGateEnabled = false;
+    automationData.followGateMessage = null;
+  }
+  if (automationData.followGateEnabled === false) {
+    automationData.followGateMessage = null;
   }
   // Any-post / next-reel campaigns carry no specific post.
   if (automationData.matchAnyPost === true || automationData.pendingNextReel === true) {

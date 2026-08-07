@@ -40,6 +40,8 @@ interface LoadedCampaign {
   openingDmEnabled: boolean;
   openingDmMessage: string | null;
   openingDmButtonLabel: string | null;
+  followGateEnabled: boolean;
+  followGateMessage: string | null;
   linkButtonLabel: string | null;
   publicReplyEnabled: boolean;
   publicReplyMessage: string | null;
@@ -157,6 +159,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [openingDmEnabled, setOpeningDmEnabled] = useState(false);
   const [openingDmMessage, setOpeningDmMessage] = useState("");
   const [openingDmButtonLabel, setOpeningDmButtonLabel] = useState("");
+  const [followGateEnabled, setFollowGateEnabled] = useState(false);
+  const [followGateMessage, setFollowGateMessage] = useState("");
 
   const [dmMessage, setDmMessage] = useState("");
   const [linkOpen, setLinkOpen] = useState(false);
@@ -251,6 +255,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setOpeningDmEnabled(c.openingDmEnabled);
         setOpeningDmMessage(c.openingDmMessage ?? "");
         setOpeningDmButtonLabel(c.openingDmButtonLabel ?? "");
+        setFollowGateEnabled(c.followGateEnabled);
+        setFollowGateMessage(c.followGateMessage ?? "");
         setDmMessage(c.dmMessage);
         setLinkButtonLabel(c.linkButtonLabel ?? "Open link");
         setIsActive(c.isActive);
@@ -379,6 +385,11 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       openingDmEnabled,
       openingDmMessage: openingDmEnabled ? openingDmMessage : null,
       openingDmButtonLabel: openingDmEnabled ? openingDmButtonLabel : null,
+      followGateEnabled: openingDmEnabled && followGateEnabled,
+      followGateMessage:
+        openingDmEnabled && followGateEnabled
+          ? followGateMessage.trim() || null
+          : null,
       publicReplyEnabled,
       publicReplyMessages: publicReplyEnabled
         ? publicReplyMessages.map((m) => m.trim()).filter(Boolean)
@@ -763,6 +774,34 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                   className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
                   maxLength={64}
                 />
+                <div className="rounded-lg border border-border p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-sm text-foreground">
+                        require a follow first
+                      </span>
+                      <p className="text-xs text-zinc-500">
+                        When they tap the button, only followers get the link.
+                        Everyone else gets a nudge with the button again — it
+                        re-checks on every tap.
+                      </p>
+                    </div>
+                    <Toggle
+                      on={followGateEnabled}
+                      onToggle={() => setFollowGateEnabled(!followGateEnabled)}
+                    />
+                  </div>
+                  {followGateEnabled && (
+                    <textarea
+                      value={followGateMessage}
+                      onChange={(e) => setFollowGateMessage(e.target.value)}
+                      placeholder="oh this is embarrassing… you're not following me yet 😅 Hit follow, then tap the button again and it's all yours 👇"
+                      rows={3}
+                      className="mt-3 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
+                      maxLength={640}
+                    />
+                  )}
+                </div>
               </div>
             )}
           </div>

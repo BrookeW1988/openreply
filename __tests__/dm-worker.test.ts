@@ -4,6 +4,9 @@ const {
   mockPrisma,
   mockSendPrivateReply,
   mockSendPrivateReplyWithLinkButton,
+  mockSendDirectMessage,
+  mockSendDirectMessageWithButton,
+  mockGetUserFollowStatus,
   mockDecryptToken,
   mockMatchKeywords,
   mockReserveDMSlot,
@@ -14,9 +17,11 @@ const {
   mockPrisma: {
     automation: {
       findMany: vi.fn(),
+      findFirst: vi.fn(),
     },
     dmLog: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       create: vi.fn(),
       upsert: vi.fn(),
       update: vi.fn(),
@@ -30,6 +35,9 @@ const {
   },
   mockSendPrivateReply: vi.fn(),
   mockSendPrivateReplyWithLinkButton: vi.fn(),
+  mockSendDirectMessage: vi.fn(),
+  mockSendDirectMessageWithButton: vi.fn(),
+  mockGetUserFollowStatus: vi.fn(),
   mockDecryptToken: vi.fn(),
   mockMatchKeywords: vi.fn(),
   mockReserveDMSlot: vi.fn(),
@@ -46,8 +54,10 @@ vi.mock("@/lib/meta/client", () => ({
   sendPrivateReply: mockSendPrivateReply,
   sendPrivateReplyWithLinkButton: mockSendPrivateReplyWithLinkButton,
   sendPrivateReplyWithButton: vi.fn(),
-  sendDirectMessage: vi.fn(),
+  sendDirectMessage: mockSendDirectMessage,
+  sendDirectMessageWithButton: mockSendDirectMessageWithButton,
   sendDirectMessageWithLinkButton: vi.fn(),
+  getUserFollowStatus: mockGetUserFollowStatus,
   sendCommentReply: vi.fn(),
   MetaApiError: class MetaApiError extends Error {
     code: number;
@@ -470,5 +480,111 @@ describe("DM Worker — Full Pipeline", () => {
       "Get offer",
       "http://localhost:3000/r/abc123"
     );
+  });
+});
+
+describe("DM Worker - follow gate on postback", () => {
+  const gatedAutomation = {
+    ...mockAutomation,
+    openingDmEnabled: true,
+    openingDmMessage: "Hey! Tap below and I'll send it over.",
+    openingDmButtonLabel: "Send me the link",
+    followGateEnabled: true,
+    followGateMessage: null,
+  };
+
+  const postbackJob = {
+    data: {
+      instagramAccountId: "ig_456",
+      userId: "commenter_999",
+      payload: "reveal:auto_789",
+    },
+    id: "job_pb_001",
+    name: "process-postback",
+    attemptsMade: 0,
+  };
+
+  function getPostbackProcessor(): (job: typeof postbackJob) => Promise<void> {
+    createDMWorker();
+    return (global as Record<string, unknown>).__dmWorkerProcessor as (
+      job: typeof postbackJob
+    ) => Promise<void>;
+  }
+
+  beforeEach(() => {
+    mockPrisma.automation.findFirst.mockResolvedValue(gatedAutomation);
+    mockPrisma.dmLog.findFirst.mockResolvedValue({
+      commenterName: "commenter_user",
+    });
+  });
+
+  it("sends the nudge with the button again when the tapper does not follow", async () => {
+    mockGetUserFollowStatus.mockResolvedValue(false);
+
+    await getPostbackProcessor()(postbackJob);
+
+    expect(mockSendDirectMessageWithButton).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "commenter_999",
+      expect.stringContaining("not following"),
+      "Send me the link",
+      "reveal:auto_789"
+    );
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockPrisma.dmLog.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ status: "FOLLOW_NUDGE" }),
+      })
+    );
+  });
+
+  it("delivers the reveal when the tapper follows", async () => {
+    mockGetUserFollowStatus.mockResolvedValue(true);
+
+    await getPostbackProcessor()(postbackJob);
+
+    expect(mockSendDirectMessageWithButton).not.toHaveBeenCalled();
+    expect(mockSendDirectMessage).toHaveBeenCalled();
+  });
+
+  it("fails open and delivers when the follow check errors", async () => {
+    mockGetUserFollowStatus.mockResolvedValue(null);
+
+    await getPostbackProcessor()(postbackJob);
+
+    expect(mockSendDirectMessageWithButton).not.toHaveBeenCalled();
+    expect(mockSendDirectMessage).toHaveBeenCalled();
+  });
+
+  it("uses the campaign's custom nudge copy when set", async () => {
+    mockPrisma.automation.findFirst.mockResolvedValue({
+      ...gatedAutomation,
+      followGateMessage: "Follow me first, then tap again! 💅",
+    });
+    mockGetUserFollowStatus.mockResolvedValue(false);
+
+    await getPostbackProcessor()(postbackJob);
+
+    expect(mockSendDirectMessageWithButton).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "commenter_999",
+      "Follow me first, then tap again! 💅",
+      "Send me the link",
+      "reveal:auto_789"
+    );
+  });
+
+  it("never checks follow status when the gate is off", async () => {
+    mockPrisma.automation.findFirst.mockResolvedValue({
+      ...gatedAutomation,
+      followGateEnabled: false,
+    });
+
+    await getPostbackProcessor()(postbackJob);
+
+    expect(mockGetUserFollowStatus).not.toHaveBeenCalled();
+    expect(mockSendDirectMessage).toHaveBeenCalled();
   });
 });

@@ -10,8 +10,10 @@ import {
 import { prisma } from "@/lib/db/client";
 import {
   MetaApiError,
+  getUserFollowStatus,
   sendCommentReply,
   sendDirectMessage,
+  sendDirectMessageWithButton,
   sendDirectMessageWithLinkButton,
   sendPrivateReply,
   sendPrivateReplyWithButton,
@@ -32,6 +34,11 @@ import {
 } from "@/lib/tracking/message";
 
 const BACKOFF_DELAYS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000];
+
+// Sent by the follow gate when the tapper doesn't follow yet. Campaigns can
+// override it with their own followGateMessage.
+const DEFAULT_FOLLOW_NUDGE =
+  "oh this is embarrassing… you're not following me yet 😅 Hit follow, then tap the button again and it's all yours 👇";
 
 function formatError(error: unknown): string {
   if (error instanceof MetaApiError) {
@@ -531,6 +538,51 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
   const primaryLink = automation.trackedLinks[0];
 
   try {
+    // Follow gate: only followers get the reveal. Non-followers get the nudge
+    // with the same button, so every re-tap re-checks until they follow.
+    // A null status means the check itself failed — fail open and deliver,
+    // never block a genuine follower on an API hiccup.
+    if (automation.followGateEnabled) {
+      const follows = await getUserFollowStatus(accessToken, userId);
+      if (follows === false) {
+        const nudgeText =
+          automation.followGateMessage?.trim() || DEFAULT_FOLLOW_NUDGE;
+        await sendDirectMessageWithButton(
+          accessToken,
+          automation.instagramAccount.instagramId,
+          userId,
+          nudgeText,
+          automation.openingDmButtonLabel || "I'm following!",
+          `reveal:${automation.id}`
+        );
+        await prisma.dmLog.upsert({
+          where: {
+            automationId_commentId: {
+              automationId: automation.id,
+              commentId: dedupeId,
+            },
+          },
+          create: {
+            workspaceId: automation.workspaceId,
+            automationId: automation.id,
+            instagramAccountId: automation.instagramAccountId,
+            commenterId: userId,
+            commenterName,
+            commentText: "(button tap — not following yet)",
+            commentId: dedupeId,
+            status: "FOLLOW_NUDGE",
+            dmSentAt: new Date(),
+          },
+          update: {
+            status: "FOLLOW_NUDGE",
+            dmSentAt: new Date(),
+            errorMessage: null,
+          },
+        });
+        return;
+      }
+    }
+
     if (primaryLink) {
       // Try button template first; if Meta rejects it, fall back to inline link.
       const bodyText =

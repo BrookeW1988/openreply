@@ -454,6 +454,77 @@ export async function getConversationMessages(
   return data.messages?.data ?? [];
 }
 
+/**
+ * Send a direct message as a button template with a single postback button —
+ * used by the follow gate to re-offer the reveal button under the nudge.
+ * Same template shape as sendPrivateReplyWithButton, but addressed by IGSID
+ * instead of a comment (the user has already opened the conversation).
+ */
+export async function sendDirectMessageWithButton(
+  accessToken: string,
+  instagramAccountId: string,
+  userId: string,
+  text: string,
+  buttonTitle: string,
+  payload: string
+): Promise<{ recipient_id: string; message_id: string }> {
+  const response = await fetch(
+    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        recipient: { id: userId },
+        message: {
+          attachment: {
+            type: "template",
+            payload: {
+              template_type: "button",
+              text: text.slice(0, 640),
+              buttons: [
+                { type: "postback", title: buttonTitle.slice(0, 20), payload },
+              ],
+            },
+          },
+        },
+      }),
+    }
+  );
+
+  return handleResponse(response);
+}
+
+/**
+ * Check whether a user follows the connected business account.
+ * Meta only allows this profile fetch after the user has messaged the account
+ * — a button tap counts, which is why the follow gate lives on the postback.
+ * Returns null when the check itself fails (missing permission, transient
+ * error): callers should treat null as "unknown" and fail open, so an API
+ * hiccup never blocks a genuine follower from getting their link.
+ */
+export async function getUserFollowStatus(
+  accessToken: string,
+  userId: string
+): Promise<boolean | null> {
+  try {
+    const url = new URL(`${instagramGraphBase()}/${userId}`);
+    url.searchParams.set("fields", "is_user_follow_business");
+    url.searchParams.set("access_token", accessToken);
+
+    const response = await fetch(url.toString());
+    const data = await handleResponse<{ is_user_follow_business?: boolean }>(
+      response
+    );
+    if (typeof data.is_user_follow_business !== "boolean") return null;
+    return data.is_user_follow_business;
+  } catch {
+    return null;
+  }
+}
+
 export async function getUserInfo(accessToken: string): Promise<InstagramUser> {
   const url = new URL(`${instagramGraphBase()}/me`);
   url.searchParams.set(

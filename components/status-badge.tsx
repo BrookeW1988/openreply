@@ -10,6 +10,7 @@ const statusConfig: Record<string, { text: string; label: string }> = {
   SKIPPED_RATE_LIMIT: { text: "text-warning", label: "Rate limited" },
   SKIPPED_PLAN_LIMIT: { text: "text-warning", label: "Skipped" },
   SKIPPED_NO_MATCH: { text: "text-muted", label: "No match" },
+  FOLLOW_NUDGE: { text: "text-warning", label: "Follow nudge" },
 };
 
 interface StatusBadgeProps {
